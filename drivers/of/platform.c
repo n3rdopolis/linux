@@ -524,15 +524,18 @@ static int __init of_platform_default_populate_init(void)
 arch_initcall_sync(of_platform_default_populate_init);
 #endif
 
-static int of_platform_device_destroy(struct device *dev, void *data)
+/**
+ * of_platform_device_destroy - unregister an of_device
+ * @dev: device to unregister
+ *
+ * This is the inverse operation of of_platform_device_create(). It unregisters
+ * the passed device, if registered.
+ */
+void of_platform_device_destroy(struct device *dev)
 {
 	/* Do not touch devices not populated from the device tree */
 	if (!dev->of_node || !of_node_check_flag(dev->of_node, OF_POPULATED))
-		return 0;
-
-	/* Recurse for any nodes that were treated as busses */
-	if (of_node_check_flag(dev->of_node, OF_POPULATED_BUS))
-		device_for_each_child(dev, NULL, of_platform_device_destroy);
+		return;
 
 	if (dev->bus == &platform_bus_type)
 		platform_device_unregister(to_platform_device(dev));
@@ -544,6 +547,20 @@ static int of_platform_device_destroy(struct device *dev, void *data)
 	of_dma_deconfigure(dev);
 	of_node_clear_flag(dev->of_node, OF_POPULATED);
 	of_node_clear_flag(dev->of_node, OF_POPULATED_BUS);
+}
+EXPORT_SYMBOL(of_platform_device_destroy);
+
+static int of_platform_device_depopulate(struct device *dev, void *data)
+{
+	/* Do not touch devices not populated from the device tree */
+	if (!dev->of_node || !of_node_check_flag(dev->of_node, OF_POPULATED))
+		return 0;
+
+	/* Recurse for any nodes that were treated as busses */
+	if (of_node_check_flag(dev->of_node, OF_POPULATED_BUS))
+		device_for_each_child(dev, NULL, of_platform_device_depopulate);
+
+	of_platform_device_destroy(dev);
 	return 0;
 }
 
@@ -562,7 +579,8 @@ static int of_platform_device_destroy(struct device *dev, void *data)
 void of_platform_depopulate(struct device *parent)
 {
 	if (parent->of_node && of_node_check_flag(parent->of_node, OF_POPULATED_BUS)) {
-		device_for_each_child(parent, NULL, of_platform_device_destroy);
+		device_for_each_child(parent, NULL,
+				      of_platform_device_depopulate);
 		of_node_clear_flag(parent->of_node, OF_POPULATED_BUS);
 	}
 }
@@ -574,7 +592,6 @@ static int of_platform_notify(struct notifier_block *nb,
 {
 	struct of_reconfig_data *rd = arg;
 	struct platform_device *pdev_parent, *pdev;
-	bool children_left;
 
 	switch (of_reconfig_get_state_change(action, rd)) {
 	case OF_RECONFIG_CHANGE_ADD:
@@ -612,7 +629,7 @@ static int of_platform_notify(struct notifier_block *nb,
 			return NOTIFY_OK;	/* no? not meant for us */
 
 		/* unregister takes one ref away */
-		of_platform_device_destroy(&pdev->dev, &children_left);
+		of_platform_device_depopulate(&pdev->dev, NULL);
 
 		/* and put the reference of the find */
 		of_dev_put(pdev);

@@ -63,6 +63,7 @@ extern struct platform_device *of_find_device_by_node(struct device_node *np);
 extern struct platform_device *of_platform_device_create(struct device_node *np,
 						   const char *bus_id,
 						   struct device *parent);
+extern void of_platform_device_destroy(struct device *dev);
 
 extern int of_platform_bus_probe(struct device_node *root,
 				 const struct of_device_id *matches,
