@@ -38,6 +38,7 @@
 #include <linux/console.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
+#include <linux/sysfb.h>
 #include <linux/vga_switcheroo.h>
 #include "drm_crtc_helper.h"
 
@@ -326,27 +327,6 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 
 static struct drm_driver kms_driver;
 
-static int amdgpu_kick_out_firmware_fb(struct pci_dev *pdev)
-{
-	struct apertures_struct *ap;
-	bool primary = false;
-
-	ap = alloc_apertures(1);
-	if (!ap)
-		return -ENOMEM;
-
-	ap->ranges[0].base = pci_resource_start(pdev, 0);
-	ap->ranges[0].size = pci_resource_len(pdev, 0);
-
-#ifdef CONFIG_X86
-	primary = pdev->resource[PCI_ROM_RESOURCE].flags & IORESOURCE_ROM_SHADOW;
-#endif
-	remove_conflicting_framebuffers(ap, "amdgpudrmfb", primary);
-	kfree(ap);
-
-	return 0;
-}
-
 static int amdgpu_pci_probe(struct pci_dev *pdev,
 			    const struct pci_device_id *ent)
 {
@@ -368,7 +348,7 @@ static int amdgpu_pci_probe(struct pci_dev *pdev,
 		return ret;
 
 	/* Get rid of things like offb */
-	ret = amdgpu_kick_out_firmware_fb(pdev);
+	ret = sysfb_evict_conflicts_pci(pdev);
 	if (ret)
 		return ret;
 

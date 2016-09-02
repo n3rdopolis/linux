@@ -24,28 +24,9 @@
  */
 
 #include <linux/pci.h>
+#include <linux/sysfb.h>
 
 #include "virtgpu_drv.h"
-
-static void virtio_pci_kick_out_firmware_fb(struct pci_dev *pci_dev)
-{
-	struct apertures_struct *ap;
-	bool primary;
-
-	ap = alloc_apertures(1);
-	if (!ap)
-		return;
-
-	ap->ranges[0].base = pci_resource_start(pci_dev, 0);
-	ap->ranges[0].size = pci_resource_len(pci_dev, 0);
-
-	primary = pci_dev->resource[PCI_ROM_RESOURCE].flags
-		& IORESOURCE_ROM_SHADOW;
-
-	remove_conflicting_framebuffers(ap, "virtiodrmfb", primary);
-
-	kfree(ap);
-}
 
 int drm_virtio_init(struct drm_driver *driver, struct virtio_device *vdev)
 {
@@ -65,8 +46,7 @@ int drm_virtio_init(struct drm_driver *driver, struct virtio_device *vdev)
 		DRM_INFO("pci: %s detected\n",
 			 vga ? "virtio-vga" : "virtio-gpu-pci");
 		dev->pdev = pdev;
-		if (vga)
-			virtio_pci_kick_out_firmware_fb(pdev);
+		sysfb_evict_conflicts_pci(pdev);
 	}
 
 	ret = drm_dev_register(dev, 0);

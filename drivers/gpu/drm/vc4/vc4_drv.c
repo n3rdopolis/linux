@@ -15,6 +15,7 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/sysfb.h>
 #include "drm_fb_cma_helper.h"
 
 #include "uapi/drm/vc4_drm.h"
@@ -200,30 +201,16 @@ static void vc4_match_add_drivers(struct device *dev,
 	}
 }
 
-static void vc4_kick_out_firmware_fb(void)
-{
-	struct apertures_struct *ap;
-
-	ap = alloc_apertures(1);
-	if (!ap)
-		return;
-
-	/* Since VC4 is a UMA device, the simplefb node may have been
-	 * located anywhere in memory.
-	 */
-	ap->ranges[0].base = 0;
-	ap->ranges[0].size = ~0;
-
-	remove_conflicting_framebuffers(ap, "vc4drmfb", false);
-	kfree(ap);
-}
-
 static int vc4_drm_bind(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct drm_device *drm;
 	struct vc4_dev *vc4;
 	int ret = 0;
+
+	ret = sysfb_evict_conflicts_firmware();
+	if (ret < 0)
+		return ret;
 
 	dev->coherent_dma_mask = DMA_BIT_MASK(32);
 
@@ -247,8 +234,6 @@ static int vc4_drm_bind(struct device *dev)
 	ret = component_bind_all(dev, drm);
 	if (ret)
 		goto gem_destroy;
-
-	vc4_kick_out_firmware_fb();
 
 	ret = drm_dev_register(drm, 0);
 	if (ret < 0)

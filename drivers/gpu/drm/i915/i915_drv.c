@@ -36,6 +36,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/pnp.h>
 #include <linux/slab.h>
+#include <linux/sysfb.h>
 #include <linux/vgaarb.h>
 #include <linux/vga_switcheroo.h>
 #include <linux/vt.h>
@@ -687,70 +688,32 @@ out:
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_FB)
 static int i915_kick_out_firmware_fb(struct drm_i915_private *dev_priv)
 {
-	struct apertures_struct *ap;
+	struct sysfb_evict_ctx ctx = {};
 	struct pci_dev *pdev = dev_priv->drm.pdev;
 	struct i915_ggtt *ggtt = &dev_priv->ggtt;
-	bool primary;
 	int ret;
 
-	ap = alloc_apertures(1);
-	if (!ap)
+	ctx.flags = SYSFB_EVICT_PLATFORM |
+		    SYSFB_EVICT_FBDEV |
+		    SYSFB_EVICT_VGACON;
+
+	ctx.ap = alloc_apertures(1);
+	if (!ctx.ap)
 		return -ENOMEM;
 
-	ap->ranges[0].base = ggtt->mappable_base;
-	ap->ranges[0].size = ggtt->mappable_end;
+	ctx.ap->ranges[0].base = ggtt->mappable_base;
+	ctx.ap->ranges[0].size = ggtt->mappable_end;
 
-	primary =
-		pdev->resource[PCI_ROM_RESOURCE].flags & IORESOURCE_ROM_SHADOW;
+	if (pdev->resource[PCI_ROM_RESOURCE].flags & IORESOURCE_ROM_SHADOW)
+		ctx.flags |= SYSFB_EVICT_VBE;
 
-	ret = remove_conflicting_framebuffers(ap, "inteldrmfb", primary);
+	ret = sysfb_evict_conflicts(&ctx);
 
-	kfree(ap);
-
+	kfree(ctx.ap);
 	return ret;
 }
-#else
-static int i915_kick_out_firmware_fb(struct drm_i915_private *dev_priv)
-{
-	return 0;
-}
-#endif
-
-#if !defined(CONFIG_VGA_CONSOLE)
-static int i915_kick_out_vgacon(struct drm_i915_private *dev_priv)
-{
-	return 0;
-}
-#elif !defined(CONFIG_DUMMY_CONSOLE)
-static int i915_kick_out_vgacon(struct drm_i915_private *dev_priv)
-{
-	return -ENODEV;
-}
-#else
-static int i915_kick_out_vgacon(struct drm_i915_private *dev_priv)
-{
-	int ret = 0;
-
-	DRM_INFO("Replacing VGA console driver\n");
-
-	console_lock();
-	if (con_is_bound(&vga_con))
-		ret = do_take_over_console(&dummy_con, 0, MAX_NR_CONSOLES - 1, 1);
-	if (ret == 0) {
-		ret = do_unregister_con_driver(&vga_con);
-
-		/* Ignore "already unregistered". */
-		if (ret == -ENODEV)
-			ret = 0;
-	}
-	console_unlock();
-
-	return ret;
-}
-#endif
 
 static void intel_init_dpio(struct drm_i915_private *dev_priv)
 {
@@ -1032,17 +995,9 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 		goto out_ggtt;
 	}
 
-	/* WARNING: Apparently we must kick fbdev drivers before vgacon,
-	 * otherwise the vga fbdev driver falls over. */
 	ret = i915_kick_out_firmware_fb(dev_priv);
 	if (ret) {
 		DRM_ERROR("failed to remove conflicting framebuffer drivers\n");
-		goto out_ggtt;
-	}
-
-	ret = i915_kick_out_vgacon(dev_priv);
-	if (ret) {
-		DRM_ERROR("failed to remove conflicting VGA console\n");
 		goto out_ggtt;
 	}
 
