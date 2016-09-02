@@ -36,6 +36,10 @@ config VIDEOMODE_HELPERS
 config HDMI
 	bool
 
+config SYSFB
+	bool
+	select DUMMY_CONSOLE if VT
+
 if VT
 	source "drivers/video/console/Kconfig"
 endif
