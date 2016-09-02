@@ -169,51 +169,58 @@ static const struct drm_framebuffer_funcs sdrm_fb_ops = {
 	.destroy		= sdrm_fb_destroy,
 };
 
+struct sdrm_fb *sdrm_fb_new(struct sdrm_bo *bo,
+			    const struct drm_mode_fb_cmd2 *cmd)
+{
+	struct sdrm_fb *fb;
+	int r;
+
+	if (cmd->flags)
+		return ERR_PTR(-EINVAL);
+
+	r = sdrm_bo_vmap(bo);
+	if (r < 0)
+		return ERR_PTR(r);
+
+	fb = kzalloc(sizeof(*fb), GFP_KERNEL);
+	if (!fb)
+		return ERR_PTR(r);
+
+	drm_gem_object_reference(&bo->base);
+	fb->bo = bo;
+	drm_helper_mode_fill_fb_struct(&fb->base, cmd);
+
+	r = drm_framebuffer_init(bo->base.dev, &fb->base, &sdrm_fb_ops);
+	if (r < 0)
+		goto error;
+
+	return fb;
+
+error:
+	drm_gem_object_unreference_unlocked(&bo->base);
+	kfree(fb);
+	return ERR_PTR(r);
+}
+
 static struct drm_framebuffer *
 sdrm_fb_create(struct drm_device *ddev,
 	       struct drm_file *dfile,
 	       const struct drm_mode_fb_cmd2 *cmd)
 {
 	struct drm_gem_object *dobj;
-	struct sdrm_fb *fb = NULL;
-	struct sdrm_bo *bo;
-	int r;
-
-	if (cmd->flags)
-		return ERR_PTR(-EINVAL);
+	struct sdrm_fb *fb;
 
 	dobj = drm_gem_object_lookup(dfile, cmd->handles[0]);
 	if (!dobj)
 		return ERR_PTR(-EINVAL);
 
-	bo = container_of(dobj, struct sdrm_bo, base);
+	fb = sdrm_fb_new(container_of(dobj, struct sdrm_bo, base), cmd);
+	drm_gem_object_unreference_unlocked(dobj);
 
-	r = sdrm_bo_vmap(bo);
-	if (r < 0)
-		goto error;
-
-	fb = kzalloc(sizeof(*fb), GFP_KERNEL);
-	if (!fb) {
-		r = -ENOMEM;
-		goto error;
-	}
-
-	fb->bo = bo;
-	drm_helper_mode_fill_fb_struct(&fb->base, cmd);
-
-	r = drm_framebuffer_init(ddev, &fb->base, &sdrm_fb_ops);
-	if (r < 0)
-		goto error;
-
-	DRM_DEBUG_KMS("[FB:%d] pixel_format: %s\n", fb->base.base.id,
-		      drm_get_format_name(fb->base.pixel_format));
+	if (IS_ERR(fb))
+		return ERR_CAST(fb);
 
 	return &fb->base;
-
-error:
-	kfree(fb);
-	drm_gem_object_unreference_unlocked(dobj);
-	return ERR_PTR(r);
 }
 
 static const struct drm_mode_config_funcs sdrm_mode_config_ops = {

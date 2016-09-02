@@ -19,6 +19,7 @@
 #include <linux/mutex.h>
 
 struct clk;
+struct drm_fb_helper;
 struct regulator;
 struct simplefb_format;
 
@@ -49,6 +50,7 @@ struct sdrm_device {
 	atomic_t n_used;
 	struct drm_device *ddev;
 	struct sdrm_hw *hw;
+	struct drm_fb_helper *fbdev;
 
 	size_t n_clks;
 	size_t n_regulators;
@@ -66,6 +68,9 @@ void sdrm_of_unbind(struct sdrm_device *sdrm);
 int sdrm_kms_bind(struct sdrm_device *sdrm);
 void sdrm_kms_unbind(struct sdrm_device *sdrm);
 
+void sdrm_fbdev_bind(struct sdrm_device *sdrm);
+void sdrm_fbdev_unbind(struct sdrm_device *sdrm);
+
 void sdrm_dirty(struct sdrm_fb *fb, u32 x, u32 y, u32 width, u32 height);
 
 struct sdrm_bo *sdrm_bo_new(struct drm_device *ddev, size_t size);
@@ -79,5 +84,8 @@ int sdrm_dumb_map_offset(struct drm_file *dfile,
 			 struct drm_device *ddev,
 			 uint32_t handle,
 			 uint64_t *offset);
+
+struct sdrm_fb *sdrm_fb_new(struct sdrm_bo *bo,
+			    const struct drm_mode_fb_cmd2 *cmd);
 
 #endif /* __SDRM_SIMPLEDRM_H */

@@ -9,6 +9,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #include <drm/drmP.h>
+#include <drm/drm_fb_helper.h>
 #include <linux/atomic.h>
 #include <linux/err.h>
 #include <linux/io.h>
@@ -210,6 +211,7 @@ error:
 static void sdrm_device_unbind(struct sdrm_device *sdrm)
 {
 	if (sdrm) {
+		sdrm_fbdev_unbind(sdrm);
 		sdrm_kms_unbind(sdrm);
 		sdrm_hw_unbind(sdrm->hw);
 		sdrm_of_unbind(sdrm);
@@ -232,6 +234,8 @@ static int sdrm_device_bind(struct sdrm_device *sdrm)
 	if (r < 0)
 		goto error;
 
+	sdrm_fbdev_bind(sdrm);
+
 	return 0;
 
 error:
@@ -251,6 +255,14 @@ static void sdrm_device_release(struct sdrm_device *sdrm)
 		sdrm_device_unbind(sdrm);
 		sdrm_device_free(sdrm);
 	}
+}
+
+static void sdrm_device_lastclose(struct drm_device *ddev)
+{
+	struct sdrm_device *sdrm = ddev->dev_private;
+
+	if (sdrm->fbdev)
+		drm_fb_helper_restore_fbdev_mode_unlocked(sdrm->fbdev);
 }
 
 static int sdrm_fop_open(struct inode *inode, struct file *file)
@@ -411,6 +423,7 @@ static const struct file_operations sdrm_drm_fops = {
 static struct drm_driver sdrm_drm_driver = {
 	.driver_features = DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
 	.fops = &sdrm_drm_fops,
+	.lastclose = sdrm_device_lastclose,
 
 	.gem_free_object = sdrm_bo_free,
 
