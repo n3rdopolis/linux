@@ -1,6 +1,7 @@
 config DRM_SIMPLEDRM
 	tristate "Simple firmware framebuffer DRM driver"
 	depends on DRM
+	depends on OF
 	select DRM_KMS_HELPER
 	help
 	  SimpleDRM can run on all systems with pre-initialized graphics
