@@ -317,7 +317,7 @@ static int sdrm_fop_mmap(struct file *file, struct vm_area_struct *vma)
 	if (!obj)
 		return -EINVAL;
 
-	if (!drm_vma_node_is_allowed(node, dfile)) {
+	if (!drm_vma_node_is_allowed(node, file)) {
 		drm_gem_object_unreference_unlocked(obj);
 		return -EACCES;
 	}
